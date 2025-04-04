@@ -24,11 +24,13 @@ int count_letters(const char *file_name, int *counts) {
         perror("fopen");
         return -1;
     }
+    //read every indavidual character in the file
     while((current = fgetc(file_read)) != EOF){
         if(isalpha(current)){
             if(isupper(current)){
                 current = tolower(current);
             }
+            //add the letter into the current array in the right index
             counts[current - 'a']++;
         }
 
@@ -55,7 +57,7 @@ int process_file(const char *file_name, int out_fd) {
         return -1;
 
     }
-    if(write(out_fd, letter_count, sizeof(int)*ALPHABET_LEN) == -1){
+    if(write(out_fd, letter_count, sizeof(letter_count)) == -1){
         perror("write to pipe");
         return -1;
 
@@ -68,14 +70,72 @@ int main(int argc, char **argv) {
         // No files to consume, return immediately
         return 0;
     }
+    int pipe_fds[2];
+    if (pipe(pipe_fds) == -1) {
+        perror("pipe");
+        return -1;
+    }
+    //forking argc-1 children (one for each file)
+    for(int i = 1; i<argc; i++){
+        pid_t child_pid = fork();
+        if(child_pid == -1){
+            perror("fork");
+            close(pipe_fds[0]);
+            close(pipe_fds[1]);
+            return 1;
+        }
+        if(child_pid == 0){
+            if (close(pipe_fds[0]) == -1) {
+                perror("close");
+                close(pipe_fds[0]);
+                exit(1);
+            }
 
-    // TODO Create a pipe for child processes to write their results
-    // TODO Fork a child to analyze each specified file (names are argv[1], argv[2], ...)
-    // TODO Aggregate all the results together by reading from the pipe in the parent
+            if(process_file(argv[i], pipe_fds[1]) == -1){
+                exit(1);
+            }
+            if (close(pipe_fds[1]) == -1) {
+                perror("close");
+                exit(1);
+            }
+            exit(0);
 
-    // TODO Change this code to print out the total count of each letter (case insensitive)
+        }
+    }
+    //first wait for all children to finish
+    for(int i = 0; i<argc; i++){
+        wait(NULL);
+    }
+    if (close(pipe_fds[1]) == -1) {
+        perror("close");
+        close(pipe_fds[0]);
+        return 1;
+    }
+
+    int bytes_read;
+    int total_counts[ALPHABET_LEN] = {0};
+    int temp[ALPHABET_LEN];
+
+    //reads each file input by reasding a list of ALPABET_LEN length
+    while ((bytes_read = read(pipe_fds[0], temp, sizeof(temp))) > 0) {
+        //if it does not read the a list of ALPHABET_LEN ints something went wrong
+        if(bytes_read != sizeof(temp)){
+            perror("reading from pipe");
+            return 1;
+        }
+        for(int j = 0; j<ALPHABET_LEN; j++){
+            total_counts[j] += temp[j];
+        }
+    }
+    //close the read pipe after finishing reading each array
+    if (close(pipe_fds[0]) == -1) {
+        perror("close");
+        return 1;
+    }
+
+
     for (int i = 0; i < ALPHABET_LEN; i++) {
-        printf("%c Count: %d\n", 'a' + i, -1);
+        printf("%c Count: %d\n", 'a' + i, total_counts[i]);
     }
     return 0;
 }

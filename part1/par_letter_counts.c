@@ -7,7 +7,6 @@
 #include <unistd.h>
 
 #define ALPHABET_LEN 26
-
 /*
  * Counts the number of occurrences of each letter (case insensitive) in a text
  * file and stores the results in an array.
@@ -18,6 +17,23 @@
  * Returns 0 on success or -1 on error.
  */
 int count_letters(const char *file_name, int *counts) {
+
+    FILE *file_read = fopen(file_name, "r");
+    char current;
+    if(file_read == NULL){
+        perror("fopen");
+        return -1;
+    }
+    while((current = fgetc(file_read)) != EOF){
+        if(isalpha(current)){
+            if(isupper(current)){
+                current = tolower(current);
+            }
+            counts[current - 'a']++;
+        }
+
+    }
+    fclose(file_read);
     return 0;
 }
 
@@ -30,6 +46,20 @@ int count_letters(const char *file_name, int *counts) {
  * Returns 0 on success or -1 on error
  */
 int process_file(const char *file_name, int out_fd) {
+    int letter_count[ALPHABET_LEN];
+    for(int i = 0; i<ALPHABET_LEN; i++){
+        letter_count[i] = 0;
+    }
+
+    if(count_letters(file_name, letter_count) == -1){
+        return -1;
+
+    }
+    if(write(out_fd, letter_count, sizeof(int)*ALPHABET_LEN) == -1){
+        perror("write to pipe");
+        return -1;
+
+    }
     return 0;
 }
 

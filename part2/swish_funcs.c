@@ -32,5 +32,75 @@ int run_piped_command(strvec_t *tokens, int *pipes, int n_pipes, int in_idx, int
 
 int run_pipelined_commands(strvec_t *tokens) {
     // TODO Complete this function's implementation
+
+    int n = strvec_num_occurrences(tokens, "|");
+    int *pipe_fds = malloc(2 * n * sizeof(int));
+    if (pipe_fds == NULL) {
+        fprintf(stderr, "malloc failed\n");
+        return -1;
+    }
+
+    // Set up all pipes
+    for (int i = 0; i < n; i++) {
+        if (pipe(pipe_fds + 2 * i) == -1) {
+            perror("pipe");
+            for (int j = 0; j < i; j++) {
+                close(pipe_fds[2 * j]);
+                close(pipe_fds[2 * j + 1]);
+            }
+            free(pipe_fds);
+            return -1;
+        }
+    }
+    int end_index = 0;
+    int start_index;
+
+    for (int i = 0; i < n; i++) {
+        //finding the end of a pipe command
+        start_index = end_index;
+        if(strvec_find(tokens, "|") != -1){
+            end_index = strvec_find(tokens, "|");
+        }
+        strvec_t *new_tok;
+        strvec_slice(tokens, new_tok, start_index, end_index);
+        pid_t child_pid = fork();
+        if (child_pid == -1) {
+            perror("fork");
+            for (int j = 0; j < n; j++) {
+                close(pipe_fds[2 * j]);
+                close(pipe_fds[2 * j + 1]);
+            }
+            free(pipe_fds);
+            return -1;
+        } else if (child_pid == 0) {
+            // Close pipes for all other children
+            // And close read end of own pipe
+            int in_index;
+            int out_index;
+            if(i == 0){
+                in_index = -1;
+
+            }
+            else{
+                in_index = 2 * (i-1);
+            }
+            if(i = n-1){
+                out_index = -1;
+            }
+            else{
+                out_index = 2 * (i+1);
+            }
+            run_piped_command(new_tok, pipe_fds, n, in_index, out_index);
+            for (int j = 0; j < n; j++) {
+                if (close(pipe_fds[2 * j]) == -1) {
+                    perror("close");
+                }
+                if (j != i && close(pipe_fds[2 * j + 1]) == -1) {
+                    perror("close");
+                }
+            }
+        }
+    }
+
     return 0;
 }

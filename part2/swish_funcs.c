@@ -39,7 +39,9 @@ int run_piped_command(strvec_t *tokens, int *pipes, int n_pipes, int in_idx, int
         }
     }
     for (int i = 0; i < 2 * n_pipes; i++) {
-        close(pipes[i]);
+        if (close(pipes[i]) == -1) {
+            perror("close failure");
+        }
     }
 
     run_command(tokens);
@@ -49,7 +51,6 @@ int run_piped_command(strvec_t *tokens, int *pipes, int n_pipes, int in_idx, int
 }
 
 int run_pipelined_commands(strvec_t *tokens) {
-    // TODO Complete this function's implementation
     int n = strvec_num_occurrences(tokens, "|");
     int *pipe_fds = malloc(2 * n * sizeof(int));
     if (pipe_fds == NULL) {
@@ -116,7 +117,9 @@ int run_pipelined_commands(strvec_t *tokens) {
     }
 
     for (int i = 0; i < 2 * n; i++) {
-        close(pipe_fds[i]);
+        if (close(pipe_fds[i]) == -1) {
+            perror("close failure");
+        }
     }
     free(pipe_fds);
 

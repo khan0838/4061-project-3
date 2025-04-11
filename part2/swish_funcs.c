@@ -56,11 +56,11 @@ int run_pipelined_commands(strvec_t *tokens) {
 
     for (int i = 0; i <= n; i++) {
         //finding the end of a pipe command
-        if(i == 0){
+        if(i == n){
             end_index = tokens->length;
         }
         else if(strvec_find(tokens, "|") != -1){
-            end_index = strvec_find(tokens + start_index, "|"); //dont know if this works, trying to find out a way to get to the next '|' wihtout repeating the very first one
+            end_index = strvec_find(tokens + start_index, "|"); //dont know if this works, trying to find out a way to get to the next '|' wihtout repeating the very first one. we might have to think of it in backwards term
         }
         strvec_t new_tok;
 

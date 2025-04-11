@@ -26,32 +26,26 @@
  * Returns 0 on success or -1 on error.
  */
 int run_piped_command(strvec_t *tokens, int *pipes, int n_pipes, int in_idx, int out_idx) {
-    // TODO Complete this function's implementation
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork error\n");
-        return -1;
+    if (in_idx != -1) {
+        if (dup2(pipes[in_idx], STDIN_FILENO) == -1) {
+            perror("dup2 for STDIN");
+            exit(1);
+        }
+    }
+    if (out_idx != -1) {
+        if (dup2(pipes[out_idx], STDOUT_FILENO) == -1) {
+            perror("dup2 for STDOUT");
+            exit(1);
+        }
+    }
+    for (int i = 0; i < 2 * n_pipes; i++) {
+        close(pipes[i]);
     }
 
-    if (pid == 0) {
-        if (in_idx >= 0) {
-            if (dup2(pipes[in_idx], STDIN_FILENO) < 0) {
-                perror("dup2 for STDIN");
-                exit(1);
-            }
-        }
-        for (int i = 0; i < n_pipes; i++) {
-            close(pipes[i]);
-        }
+    run_command(tokens);
+    perror("run_command failed");
+    exit(1);
 
-        int runComs = run_command(tokens);
-        if (runComs < 0) {
-            fprintf(stderr, "run_command failed\n");
-        }
-        exit(1);
-    }
-
-    return pid;
 }
 
 int run_pipelined_commands(strvec_t *tokens) {
@@ -59,7 +53,7 @@ int run_pipelined_commands(strvec_t *tokens) {
     int n = strvec_num_occurrences(tokens, "|");
     int *pipe_fds = malloc(2 * n * sizeof(int));
     if (pipe_fds == NULL) {
-        fprintf(stderr, "malloc failed\n");
+        perror("malloc");
         return -1;
     }
 
@@ -75,111 +69,83 @@ int run_pipelined_commands(strvec_t *tokens) {
             return -1;
         }
     }
-    int end_index = 0;
-    int start_index = 0;
 
-    for (int i = 0; i <= n; i++) {
+    for (int i = n; i >= 0; i--) {
         //finding the end of a pipe command
-        if(i == n){
-            end_index = tokens->length;
+        int in_idx;
+        int out_idx;
+        if(i == 0){
+            in_idx = -1;
+        } else {
+            in_idx = 2 * (i - 1);
         }
-        else if(strvec_find(tokens, "|") != -1){
-            end_index = strvec_find(tokens + start_index, "|"); //dont know if this works, trying to find out a way to get to the next '|' wihtout repeating the very first one. we might have to think of it in backwards term
-        }
-        strvec_t new_tok;
 
-        //string_vector says that new_tok does not need to be initialized beforehand with the function strvec_slice.
-        strvec_slice(tokens, &new_tok, start_index, end_index);
-        pid_t child_pid = fork();
-        if (child_pid == -1) {
-            perror("fork");
-            for (int j = 0; j < n; j++) {
-                close(pipe_fds[2 * j]);
-                close(pipe_fds[2 * j + 1]);
-            }
+        if (i == n) {
+            out_idx = -1;
+        } else {
+            out_idx = 2 * i + 1;
+        }
+
+        int pipe_pos = strvec_find_last(tokens, "|");
+        int start_idx;
+        if (pipe_pos == -1) {
+            start_idx = 0;
+        } else {
+            start_idx = pipe_pos + 1;
+        }
+
+        strvec_t cmd;
+        if (strvec_slice(tokens, &cmd, start_idx, tokens->length) == -1) {
+            perror("strvec_slice");
             free(pipe_fds);
             return -1;
-        } else if (child_pid == 0) {
-
-            // Close pipes for all other children (except the current write pipe and the previouse read pipe)
-            int close_failure = 0;
-            for (int j = 0; j < n; j++) {
-                if (j != (i - 1) && close(pipe_fds[2 * j]) == -1) {
-                    perror("close");
-                    close_failure = 1;
-                }
-                if (j != i && close(pipe_fds[2 * j + 1]) == -1) {
-                    perror("close");
-                    close_failure = 1;
-                }
-            }
-            if (close_failure) {
-                free(pipe_fds);
-                exit(1);
-            }
-            int in_index;
-            int out_index;
-            if(i == 0){
-                in_index = -1;
-            }
-            //get the read end of the previous pipe
-            else{
-                in_index = 2 * (i - 1);
-            }
-            if(i == n-1){
-                out_index = -1;
-            }
-            else{
-                out_index = 2 * (i+1);
-            }
-
-            run_piped_command(&new_tok, pipe_fds, n, in_index, out_index);
         }
-        strvec_clear(&new_tok);
-        start_index = end_index + 1;
+
+        pid_t pid = fork();
+        if (pid == -1) {
+            perror("fork");
+            strvec_clear(&cmd);
+            free(pipe_fds);
+            return -1;
+        } else if (pid == 0) {
+            run_piped_command(&cmd, pipe_fds, n, in_idx, out_idx);
+        }
+
+        strvec_take(tokens, pipe_pos);
+        strvec_clear(&cmd);
     }
 
-    //wait for every child to finish
+    for (int i = 0; i < 2 * n; i++) {
+        close(pipe_fds[i]);
+    }
+    free(pipe_fds);
+
+
     int status;
     int failure = 0;
-
     for (int i = 0; i <= n; i++) {
         if (wait(&status) == -1) {
             perror("wait");
             failure = 1;
-        }
-        else if (WIFEXITED(status)) {
+        } else {
+            if (WIFEXITED(status)) {
             int code = WEXITSTATUS(status);
             if (code != 0) {
                 // Child exited with non-zero status (like exit(1))
                 failure = 1;
             }
-        } else if (WIFSIGNALED(status)) {
+        } else {
+            if (WIFSIGNALED(status)) {
             // Child was terminated by a signal
             failure = 1;
+            }
         }
     }
+}
 
-    if (failure) {
+    if (failure != 0) {
         return -1;
+    } else {
+        return 0;
     }
-    //close all pipes in the pipe array
-    int close_failure = 0;
-    for (int j = 0; j < n; j++) {
-        if (close(pipe_fds[2 * j]) == -1) {
-                perror("close");
-                close_failure = 1;
-            }
-        if (close(pipe_fds[2 * j + 1]) == -1) {
-                perror("close");
-                close_failure = 1;
-            }
-        }
-    if (close_failure) {
-       return -1;
-    }
-
-    free(pipe_fds);
-
-    return 0;
 }

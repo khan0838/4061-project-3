@@ -24,6 +24,11 @@ int count_letters(const char *file_name, int *counts) {
         perror("fopen");
         return -1;
     }
+    if(counts == NULL){
+        fprintf(stderr, "counts array is NULL\n");
+        fclose(file_read);
+        return -1;
+    }
     //read every indavidual character in the file
     while((current = fgetc(file_read)) != EOF){
         if(isalpha(current)){
@@ -35,7 +40,10 @@ int count_letters(const char *file_name, int *counts) {
         }
 
     }
-    fclose(file_read);
+    if(fclose(file_read) != 0){
+        perror("something went wrong with closing file.\n");
+        return -1;
+    }
     return 0;
 }
 
@@ -49,18 +57,16 @@ int count_letters(const char *file_name, int *counts) {
  */
 int process_file(const char *file_name, int out_fd) {
     int letter_count[ALPHABET_LEN];
-    for(int i = 0; i<ALPHABET_LEN; i++){
-        letter_count[i] = 0;
-    }
+    memset(letter_count, 0, sizeof(letter_count));
 
     if(count_letters(file_name, letter_count) == -1){
         return -1;
 
     }
-    if(write(out_fd, letter_count, sizeof(letter_count)) == -1){
-        perror("write to pipe");
+    ssize_t bytes_written = write(out_fd, letter_count, sizeof(letter_count));
+    if (bytes_written == -1 || bytes_written != sizeof(letter_count)) {
+        perror("write");
         return -1;
-
     }
     return 0;
 }
@@ -119,7 +125,7 @@ int main(int argc, char **argv) {
     //reads each file input by reasding a list of ALPABET_LEN length
     while ((bytes_read = read(pipe_fds[0], temp, sizeof(temp))) > 0) {
         //if it does not read the a list of ALPHABET_LEN ints something went wrong
-        if(bytes_read != sizeof(temp)){
+        if(bytes_read != sizeof(temp) || bytes_read == -1){
             perror("reading from pipe");
             return 1;
         }

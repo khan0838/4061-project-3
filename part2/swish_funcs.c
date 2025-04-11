@@ -54,9 +54,12 @@ int run_pipelined_commands(strvec_t *tokens) {
     int end_index = 0;
     int start_index = 0;
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i <= n; i++) {
         //finding the end of a pipe command
-        if(strvec_find(tokens, "|") != -1){
+        if(i == n){
+            end_index = tokens->length;
+        }
+        else if(strvec_find(tokens, "|") != -1){
             end_index = strvec_find(tokens, "|");
         }
         strvec_t *new_tok;
@@ -112,8 +115,28 @@ int run_pipelined_commands(strvec_t *tokens) {
     }
 
     //wait for every child to finish
-    for(int i = 0; i<n; i++){
-        wait(NULL);
+    int status;
+    int failure = 0;
+
+    for (int i = 0; i <= n; i++) {
+        if (wait(&status) == -1) {
+            perror("wait");
+            failure = 1;
+        }
+        else if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code != 0) {
+                // Child exited with non-zero status (like exit(1))
+                failure = 1;
+            }
+        } else if (WIFSIGNALED(status)) {
+            // Child was terminated by a signal
+            failure = 1;
+        }
+    }
+
+    if (failure) {
+        return -1;
     }
     //close all pipes in the pipe array
     int close_failure = 0;
@@ -128,8 +151,7 @@ int run_pipelined_commands(strvec_t *tokens) {
             }
         }
     if (close_failure) {
-        free(pipe_fds);
-        exit(1);
+       return -1;
     }
 
     free(pipe_fds);

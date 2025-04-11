@@ -56,16 +56,16 @@ int run_pipelined_commands(strvec_t *tokens) {
 
     for (int i = 0; i <= n; i++) {
         //finding the end of a pipe command
-        if(i == n){
+        if(i == 0){
             end_index = tokens->length;
         }
         else if(strvec_find(tokens, "|") != -1){
-            end_index = strvec_find(tokens, "|");
+            end_index = strvec_find(tokens + start_index, "|"); //dont know if this works, trying to find out a way to get to the next '|' wihtout repeating the very first one
         }
-        strvec_t *new_tok;
+        strvec_t new_tok;
 
         //string_vector says that new_tok does not need to be initialized beforehand with the function strvec_slice.
-        strvec_slice(tokens, new_tok, start_index, end_index);
+        strvec_slice(tokens, &new_tok, start_index, end_index);
         pid_t child_pid = fork();
         if (child_pid == -1) {
             perror("fork");
@@ -109,8 +109,9 @@ int run_pipelined_commands(strvec_t *tokens) {
                 out_index = 2 * (i+1);
             }
 
-            run_piped_command(new_tok, pipe_fds, n, in_index, out_index);
+            run_piped_command(&new_tok, pipe_fds, n, in_index, out_index);
         }
+        strvec_clear(&new_tok);
         start_index = end_index + 1;
     }
 

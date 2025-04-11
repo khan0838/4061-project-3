@@ -27,7 +27,31 @@
  */
 int run_piped_command(strvec_t *tokens, int *pipes, int n_pipes, int in_idx, int out_idx) {
     // TODO Complete this function's implementation
-    return 0;
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork error\n");
+        return -1;
+    }
+
+    if (pid == 0) {
+        if (in_idx >= 0) {
+            if (dup2(pipes[in_idx], STDIN_FILENO) < 0) {
+                perror("dup2 for STDIN");
+                exit(1);
+            }
+        }
+        for (int i = 0; i < n_pipes; i++) {
+            close(pipes[i]);
+        }
+
+        int runComs = run_command(tokens);
+        if (runComs < 0) {
+            fprintf(stderr, "run_command failed\n");
+        }
+        exit(1);
+    }
+
+    return pid;
 }
 
 int run_pipelined_commands(strvec_t *tokens) {

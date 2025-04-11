@@ -1,7 +1,0 @@
-@> echo hello | cat
-wait: No child processes
-wait: No child processes
-wait: No child processes
-@> exit
-wait: No child processes
-@> 
